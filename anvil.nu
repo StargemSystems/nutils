@@ -1,0 +1,284 @@
+# NuShell Utility Anvil Library
+
+#| formats.nu
+#| default.nu
+#| network.nu
+#| random.nu
+#| shells.nu
+#| system.nu
+
+#| core.nu
+
+# print an error message and halt
+export def failure [message: string] { error make -u {msg: $message} }
+
+# eval closure otherwise return given value
+export def varval [it? ...rest] {
+  let it = $in | default $it
+  if ($it | of-type closure) { do $it ...$rest } else { return $it }
+}
+
+# simpler if-else statement for ergonomic use within variable bindings
+export def elif [cond: bool then: any else?: any] {
+  if $cond { varval $then } else { varval $else }
+}
+
+# dynamic evaled values for defaults
+export def "default do" [func: closure] {
+  let item = $in
+  if ($item | is-empty) { do $func } else { $item }
+}
+
+#| filters.nu
+
+# inverse of is-empty
+export alias is-thing = is-not-empty
+
+# return head of list
+export def hd [list?] { $in | default $list | first }
+
+# return tail of list
+export def tl [list?] { $in | default $list | skip 1 }
+
+# enforce given order of columns
+export def reorder [...headers] { $in | move ...(tl $headers) --after (hd $headers) }
+
+# flatten returning first item if only one
+export def squish [...items] {
+  let flat = $in | append $items | flatten | where {is-thing}
+  if ($flat | length) == 1 { $flat | first } else { $flat }
+}
+
+# test if input is of some types
+export def of-type [...types] {
+  if (($in | describe) in $types) { return true } else { return false }
+}
+
+# assert is empty or matches sample
+export def is-empty-or [match] {
+  let it = $in
+  if ($it | is-empty) or ($it =~ $match) { return true } else { return false }
+}
+
+#| generators.nu
+
+# generate a namespaced v5 uuid
+export def nsidgen [seed?: string base: string = "@oid"] {
+  let seed = $in | default $seed
+  uuidgen --sha1 --namespace $base --name $seed | str trim
+}
+
+#| transforms.nu
+
+# produce list with value flagged for use in command spread
+export def mk-flag [flag item?] {
+  let cond = $in
+  let flag = ('--' + $flag)
+  let item = $item | default $cond
+  if ($cond | is-empty) or ($cond == false) { return [] }
+  if ($cond == true) and ($item == true) { return [$flag] }
+  return [$flag (varval $item $cond)]
+}
+
+#| strings.nu
+
+export alias conjoin-nl = str join (char nl)
+export alias conjoin = str join ''
+
+# remove all of char from string
+export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
+
+# remove regex match from string
+export def "str purge" [expr: string] { $in | str replace -arm $expr '' }
+
+# replace repeating chars with a single one
+export def "str squeeze" [char: string = ' '] { $in | str replace -a -r $'[($char)]+' $char }
+
+# join list into string with new lines
+export def "str join-nl" [...items] { $in | append $items | flatten | str join (char nl) }
+
+# dubble quote something for posix usage
+export def "str enquote" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
+
+#| platform.nu
+
+# reset and clear terminal
+export def --env clr [] { clear; reset }
+
+# prompt for confirmation
+export def confirm [
+  prompt: string # message to query with
+  --invert # default to no insted of yes
+] {
+  if $invert {
+    (input -n 1 ($prompt + ' [N/y]: ')) =~ "n|N|\n"
+  } else {
+    (input -n 1 ($prompt + ' [Y/n]: ')) =~ "y|Y|\n"
+  }
+}
+
+#| system.nu
+
+# keep system awake while preforming a command
+export def wake-lock [...commands] {
+  doas systemd-inhibit --what=idle:sleep:handle-lid-switch -- ...$commands
+}
+
+#| path.nu
+
+# flatten and join list into clean path
+export def "path flat-join" [
+  ...segments # items to concatanate
+  --expand(-x) # apply path expantion
+] {
+  let result = ($in | append $segments
+  | flatten --all | where {is-not-empty} | path join)
+  if $expand { $result | path expand } else { return $result }
+}
+
+#| hash.nu
+
+# produce BLAKE3 checksums
+export def "hash b3sum" [
+  --derive(-d): string # use key derivation mode
+  --length(-l): int = 32 # number of output bytes
+  --seekto(-s): int = 0 # starting output byte offset
+] {
+  $in | ^b3sum --no-names --length $length --seek $seekto ...($derive | mk-flag derive-key)
+}
+
+#| date.nu
+
+# current datetime with utc timezone
+export def "date utc" [] {
+  let when = $in | default (date now)
+  $when | date to-timezone UTC
+}
+
+# produce a sortable utc timestamp
+export def "date stamp" [
+  when?: datetime
+  --precise(-p)
+  --hex(-x)
+] {
+  let fine = elif $precise '%3f' ''
+  let when = $when | default (date utc) | format date ('%y%m%d%H%M%S' + $fine) | into int
+  if $hex { $when | fmt | get upperhex | str substring 2.. } else { $when }
+}
+
+#| misc.nu
+
+# Dvorak typist practice
+export alias dvorak-typist = gtypist --personal-best --scoring=cpm --max-error=2.0 --show-errors d.typ
+
+
+#| filesystem.nu
+
+# create and enter directory
+export def --env mkcd [
+  trg: path # target to create and enter
+  --own: string # passed to chown
+  --mod: string # passed to chmod
+] {
+  mkdir $trg
+  if ($own | is-thing) { chown -R $own $trg }
+  if ($mod | is-thing) { chmod -R $mod $trg }
+  cd $trg
+}
+
+# simpler linking
+export alias lnh = ^ln     # hard link
+export alias lns = ^ln -s  # soft link
+export alias lnr = ^ln -sr # rela link
+
+# create one or more directories
+export alias mkd = mkdir
+
+# create parent directory and touch file
+export def mkf [...items] { $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
+
+# remove a symbolic link
+export alias rmln = str trim -r -c '/' | unlink
+
+# force remove anything and everything
+export alias rmrf = rm -prf
+
+# own and mod recursive file targets
+export def claim-as [user group mode ...targets] {
+  try {
+    chown -R $'($user):($group)' ...$targets
+    chmod -R $mode ...$targets
+  } catch {
+    doas chown -R $'($user):($group)' ...$targets
+    doas chmod -R $mode ...$targets
+  }
+}
+
+# Run rsync with commonly used flags while staying awake
+export def --wrapped synchro [
+  ...argv
+  --super(-s) # run with super-user privlege
+] {
+  let inhibit = [ systemd-inhibit
+    --why='Synchronization of file data and directory structure'
+    --what=idle:sleep:handle-lid-switch -- ]
+  let optargs = [ rsync
+    -ahvir --sparse --partial --append-verify
+    --no-inc-recursive --progress --info=progress2 ]
+  let cmdline = (elif $super [doas])| append $inhibit | append $optargs
+  run-external ($cmdline | hd) ...($cmdline | tl) ...$argv
+}
+
+#| blockdev.nu
+
+# mount a filesystem without needing an existing directory
+export alias mnt = doas mount --mkdir
+
+# unmount all filesystems at and under the target
+export def ejc [...targs: path] {
+  for trg in $targs {
+    doas umount --quiet --recursive $trg
+    rmdir $trg
+  }
+}
+
+# report the serial idenifier of a block device
+export def blkd-mark [dev: path] {
+  if (($dev | path type) != 'block device') {
+    failure 'not a block device' }
+  ( lsblk -ndo vendor,model,serial $dev
+  | str trim | str upcase
+  | str replace -ar '[^[:alnum:]]' '_'
+  | str replace -ar '[_]+' '_' )
+}
+
+# refine block device idenifier
+export def blkd-serl [dev: path] {
+  let mark = blkd-mark $dev
+  let wwid = lsblk -ndo wwn $dev
+  let uuid = nsidgen $mark
+  let stub = $uuid | str substring (-7)..
+  return {stub: $stub mark: $mark uuid: $uuid wwid: $wwid}
+}
+
+# locate mountpoint target with label
+export def "mnt get-target" [label?: string] {
+  let label = $in | default $label
+  let found = findmnt -n --output target --source $label | str trim
+  elif ($found | is-empty) null $found
+}
+
+# query if target is an active mountpoint
+export def "mnt is-alive" [target?] {
+  let targ = $in | default $target
+  if ($targ | path expand) in (sys disks).mount { return true } else {
+    mnt get-targ $targ | is-not-empty
+  }
+}
+
+# applet for LUKSv2 sub-commands of cryptsetup
+export def --wrapped luks [task: string ...argv] {
+  doas cryptsetup --batch-mode --type=luks2 $"luks($task | str capitalize)" ...$argv
+}
+
+#|
