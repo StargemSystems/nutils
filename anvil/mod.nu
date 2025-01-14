@@ -1,10 +1,4 @@
-# NuShell Utility Anvil Library
-
-#| formats.nu
-#| default.nu
-#| network.nu
-#| random.nu
-#| shells.nu
+# NuShell Anvil Utility Library
 
 #====================================================#
 
@@ -28,6 +22,11 @@ export def elif [cond: bool then: any else?: any] {
 export def "default do" [func: closure] {
   let it = $in; if ($it | is-empty) { do $func } else { $it }
 }
+
+# describe top level datatype
+export def whatis [item: any = null] { $in | default $item | describe | str replace --regex '<.*' "" }
+
+#| default.nu
 
 #| filters.nu
 
@@ -63,8 +62,10 @@ const nsidgen_default_ns = '@oid'
 export def nsidgen [
   seed?: string # value to generate id with
   --namespace(-s): string = $nsidgen_default_ns # uuid to derive id from
+  --binary(-b) # return raw decoded representation
 ] {
-  $in | default $seed | ^uuidgen --sha1 --namespace $namespace --name $in | str trim
+  let id = $in | default $seed | ^uuidgen --sha1 --namespace $namespace --name $in | str trim
+  elif $binary {|| $id | str strip '-' | decode hex} $id
 }
 
 #| transforms.nu
@@ -81,6 +82,12 @@ export def mk-flag [flag item?] {
 
 # make valid json for posix to consume
 export def "sanatize posix" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
+
+#| formats.nu
+
+# export def "to nix" [] {}
+
+# export def "from nix" [] {}
 
 #| strings.nu
 
@@ -134,6 +141,14 @@ export def --wrapped wake-lock [
   run-external (hd $cmd) ...(tl $cmd)
 }
 
+#| shells.nu
+
+#| random.nu
+
+# report random numbers available from /dev/urandom
+# values below 200 can be raised with rng-tools
+export def "random entropy" [] { open /proc/sys/kernel/random/entropy_avail | into int }
+
 #| path.nu
 
 # flatten and join list into clean path
@@ -180,6 +195,18 @@ export def "date stamp" [
 # Dvorak typist practice
 export alias dvorak-typist = ^gtypist --personal-best --scoring=cpm --max-error=2.0 --show-errors d.typ
 
+#| network.nu
+
+# probe a network host for open ports
+export def open-port-scan [
+  host: string = localhost # target network address
+  ports: range = 1..65535 # range of ports to check
+  --timeout(-t): string = 5m # stop after given duration
+] {
+  (nmap -sT --open --host-timeout $timeout $host -p $"($ports | first)-($ports | last)"
+  | str replace -a '/tcp' "" | lines -s | skip until {|| $in == 'PORT      STATE SERVICE' }
+  | drop 1 | str join $"\n" | detect columns | reject STATE | into int PORT)
+}
 
 #| filesystem.nu
 
@@ -230,11 +257,11 @@ export def --wrapped synchro [
 ] {
   let inhibit = [ systemd-inhibit
     --why='Synchronization of file data and directory structure'
-    --what=idle:sleep:handle-lid-switch -- ]
+    --what=idle:sleep:handle-lid-switch --mode=block -- ]
   let optargs = [ rsync
     -ahvir --sparse --partial --append-verify
     --no-inc-recursive --progress --info=all4 ]
-  let cmdline = (elif $super [doas])| append $inhibit | append $optargs
+  let cmdline = (elif $super [doas]) | append $inhibit | append $optargs
   run-external ($cmdline | hd) ...($cmdline | tl) ...$argv
 }
 
