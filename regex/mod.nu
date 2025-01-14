@@ -1,6 +1,6 @@
 # Helpers for working with regular expressions
 
-use anvil *
+use ../anvil *
 
 # export-env {
 #   $env.regex_pallet = {

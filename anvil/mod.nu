@@ -215,7 +215,7 @@ export def open-port-scan [
 def get-module-shim [file: path] {
   let item = $file | path parse
   let file = $file | path basename
-  match $item.extention {
+  match $item.extension {
     nu => 'mod.nu'
     py => '__init__.py'
     nix => 'default.nix'

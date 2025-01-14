@@ -1,6 +1,6 @@
 # Zed Filesystem
 
-use anvil *
+use ../anvil *
 
 # filesystem applet
 export alias zfs = doas zfs

@@ -1,6 +1,6 @@
 # Gnu Privacy Guard
 
-use anvil *
+use ../anvil *
 
 const gnupg_confs = {
   basic: '

@@ -1,6 +1,6 @@
 # Android Workbench Toolkit
 
-use anvil *
+use ../anvil *
 
 export alias ab = ^adb
 export alias sh = ^adb shell
