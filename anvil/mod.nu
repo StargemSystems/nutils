@@ -2,6 +2,8 @@
 
 #====================================================#
 
+export use std [null-device]
+
 #| core.nu
 
 # print an error message and halt
@@ -24,9 +26,10 @@ export def "default do" [func: closure] {
 }
 
 # describe top level datatype
-export def whatis [item: any = null] { $in | default $item | describe | str replace --regex '<.*' "" }
+export def what-is [item: any = null] { $in | default $item | describe | str replace --regex '<.*' '' }
 
 #| default.nu
+
 
 #| filters.nu
 
@@ -40,7 +43,7 @@ export def hd [list?] { $in | default $list | first }
 export def tl [list?] { $in | default $list | skip 1 }
 
 # assert pipe input is of given types
-export def of-type [...types] { ($in | describe) in $types }
+export def of-type [...types] { ($in | what-is) in $types }
 
 # assert is empty or matches sample
 export def is-empty-or [match] { let it = $in; ($it | is-empty) or ($it =~ $match) }
@@ -56,16 +59,14 @@ export def squish [...items] {
 
 #| generators.nu
 
-const nsidgen_default_ns = '@oid'
-
 # generate a namespaced v5 uuid
 export def nsidgen [
   seed?: string # value to generate id with
-  --namespace(-s): string = $nsidgen_default_ns # uuid to derive id from
+  --namespace(-s): string = '@oid' # uuid to derive id from
   --binary(-b) # return raw decoded representation
 ] {
   let id = $in | default $seed | ^uuidgen --sha1 --namespace $namespace --name $in | str trim
-  elif $binary {|| $id | str strip '-' | decode hex} $id
+  elif $binary {$id | str strip '-' | decode hex} $id
 }
 
 #| transforms.nu
@@ -85,15 +86,14 @@ export def "sanatize posix" [it?: any] { $in | default $it | to json -r | str re
 
 #| formats.nu
 
-# export def "to nix" [] {}
-
-# export def "from nix" [] {}
 
 #| strings.nu
 
-export alias conjoinl = str join (char newline)
-export alias conjoins = str join (char space)
-export alias conjoin  = str join (char nul)
+# conjoin list with newline chars
+export alias "str join nl" = str join (char newline)
+
+# conjoin list with space chars
+export alias "str join sp" = str join (char space)
 
 # remove all of char from string
 export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
@@ -102,10 +102,7 @@ export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
 export def "str purge" [expr: string] { $in | str replace -arm $expr '' }
 
 # replace repeating chars with only one
-export def "str squeeze" [char: string = ' '] { $in | str replace -a -r $'[($char)]+' $char }
-
-# join list into string with new lines
-export def "str join-nl" [...items] { $in | append $items | flatten | str join (char nl) }
+export def "str squeeze" [char: string = ' '] { $in | str replace -ar $'[($char)]+' $char }
 
 #| platform.nu
 
@@ -143,10 +140,11 @@ export def --wrapped wake-lock [
 
 #| shells.nu
 
+
 #| random.nu
 
 # report random numbers available from /dev/urandom
-# values below 200 can be raised with rng-tools
+# values below 2000 can be raised with rng-tools
 export def "random entropy" [] { open /proc/sys/kernel/random/entropy_avail | into int }
 
 #| path.nu
@@ -175,11 +173,9 @@ export def "hash b3sum" [
 #| date.nu
 
 # current or given datetime under utc timezone
-export def "date utc" [] {
-  $in | default (date now) | date to-timezone UTC
-}
+export def "date utc" [] { $in | default (date now) | date to-timezone UTC }
 
-# produce a sortable intiger utc timestamp
+# produce a sortable intiger timestamp
 export def "date stamp" [
   when?: datetime
   --precise(-p) # include micro seconds
@@ -219,7 +215,7 @@ export alias lnr = ^ln -sr # rela link
 export alias mkd = mkdir
 
 # create parent directory and touch file
-export def mkf [...items] { $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
+export def mkf [...items] { $in | append $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
 
 # create and enter directory
 export def --env mkcd [
@@ -241,12 +237,12 @@ export alias rmrf = rm -prf
 
 # own and mod recursive file targets
 export def claim-as [user group mode ...targets] {
-  try {
-    chown -R $'($user):($group)' ...$targets
-    chmod -R $mode ...$targets
-  } catch {
-    doas chown -R $'($user):($group)' ...$targets
-    doas chmod -R $mode ...$targets
+  let flg = [--quiet --recursive]
+  let own = $flg | append $'($user):($group)'
+  let mod = $flg | append 'a=,u=rwX'
+  for trg in $targets {
+    try { chown ...$own $trg } catch { try { doas chown ...$own $trg } }
+    try { chmod ...$mod $trg } catch { try { doas chmod ...$mod $trg } }
   }
 }
 
@@ -271,8 +267,8 @@ export def --wrapped synchro [
 export alias mnt = doas mount --mkdir
 
 # unmount all filesystems at and under the target
-export def ejc [...targs: path] {
-  for trg in $targs {
+export def ejc [...targets: path] {
+  for trg in $targets {
     doas umount --quiet --recursive $trg
     rmdir $trg
   }

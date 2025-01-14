@@ -1,3 +1,3 @@
 # Nu Shell Utilities
 
-export use anvil.nu *
+export use anvil *

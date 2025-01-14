@@ -1,8 +1,12 @@
+# Helpers for working with regular expressions
+
+use anvil
 
 export-env {
   $env.regex_pallet = {
     hexDigit: ''
     emailAddress: ''
+    uuid: ''
   }
 }
 
