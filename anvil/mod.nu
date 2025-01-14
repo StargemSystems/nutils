@@ -236,11 +236,17 @@ export alias rmln = str trim -r -c '/' | unlink
 export alias rmrf = rm -prf
 
 # own and mod recursive file targets
-export def claim-as [user group mode ...targets] {
+export def claim [
+  ...targs
+  --owner(-u): string
+  --group(-g): string = 'nogroup'
+  --perms(-p): string = 'a=,u=rwX'
+] {
+  let owner = $owner | default $env.USER
   let flg = [--quiet --recursive]
-  let own = $flg | append $'($user):($group)'
-  let mod = $flg | append 'a=,u=rwX'
-  for trg in $targets {
+  let own = $flg | append $'($owner):($group)'
+  let mod = $flg | append $perms
+  for trg in $targs {
     try { chown ...$own $trg } catch { try { doas chown ...$own $trg } }
     try { chmod ...$mod $trg } catch { try { doas chmod ...$mod $trg } }
   }
@@ -285,7 +291,7 @@ export def "mnt get-label" [label?: string] {
 export def "mnt is-alive" [target?] {
   let targ = $in | default $target
   if ($targ | path expand) in (sys disks).mount { return true } else {
-    mnt get-targ $targ | is-not-empty
+    mnt get-label $targ | is-not-empty
   }
 }
 

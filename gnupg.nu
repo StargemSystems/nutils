@@ -123,7 +123,7 @@ export def --env mktemp-homedir [
     seq 1 6 | each {random chars -l 8 | str upcase}
     | str join sp | save $passwd
   }
-  claim-as $env.USER nogroup 'a=,u=rwX' $target
+  claim $target
   ^gpgconf --kill all e+o> (null-device)
   $env.OLD_GNUPGHOME = $env.GNUPGHOME
   $env.GNUPGHOME = $target
