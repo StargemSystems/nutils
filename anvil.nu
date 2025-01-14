@@ -5,28 +5,28 @@
 #| network.nu
 #| random.nu
 #| shells.nu
-#| system.nu
+
+#====================================================#
 
 #| core.nu
 
 # print an error message and halt
 export def failure [message: string] { error make -u {msg: $message} }
 
-# eval closure otherwise return given value
-export def varval [it? ...rest] {
+# do closure otherwise return given value
+export def do-lazy [it? ...rest] {
   let it = $in | default $it
   if ($it | of-type closure) { do $it ...$rest } else { return $it }
 }
 
 # simpler if-else statement for ergonomic use within variable bindings
 export def elif [cond: bool then: any else?: any] {
-  if $cond { varval $then } else { varval $else }
+  if $cond { do-lazy $then } else { do-lazy $else }
 }
 
 # dynamic evaled values for defaults
 export def "default do" [func: closure] {
-  let item = $in
-  if ($item | is-empty) { do $func } else { $item }
+  let it = $in; if ($it | is-empty) { do $func } else { $it }
 }
 
 #| filters.nu
@@ -40,32 +40,31 @@ export def hd [list?] { $in | default $list | first }
 # return tail of list
 export def tl [list?] { $in | default $list | skip 1 }
 
-# enforce given order of columns
+# assert pipe input is of given types
+export def of-type [...types] { ($in | describe) in $types }
+
+# assert is empty or matches sample
+export def is-empty-or [match] { let it = $in; ($it | is-empty) or ($it =~ $match) }
+
+# enforce order of columns
 export def reorder [...headers] { $in | move ...(tl $headers) --after (hd $headers) }
 
-# flatten returning first item if only one
+# flatten list and or unwrap singleton
 export def squish [...items] {
   let flat = $in | append $items | flatten | where {is-thing}
   if ($flat | length) == 1 { $flat | first } else { $flat }
 }
 
-# test if input is of some types
-export def of-type [...types] {
-  if (($in | describe) in $types) { return true } else { return false }
-}
-
-# assert is empty or matches sample
-export def is-empty-or [match] {
-  let it = $in
-  if ($it | is-empty) or ($it =~ $match) { return true } else { return false }
-}
-
 #| generators.nu
 
+const nsidgen_default_ns = '@oid'
+
 # generate a namespaced v5 uuid
-export def nsidgen [seed?: string base: string = "@oid"] {
-  let seed = $in | default $seed
-  uuidgen --sha1 --namespace $base --name $seed | str trim
+export def nsidgen [
+  seed?: string # value to generate id with
+  --namespace(-s): string = $nsidgen_default_ns # uuid to derive id from
+] {
+  $in | default $seed | ^uuidgen --sha1 --namespace $namespace --name $in | str trim
 }
 
 #| transforms.nu
@@ -77,13 +76,17 @@ export def mk-flag [flag item?] {
   let item = $item | default $cond
   if ($cond | is-empty) or ($cond == false) { return [] }
   if ($cond == true) and ($item == true) { return [$flag] }
-  return [$flag (varval $item $cond)]
+  return [$flag (do-lazy $item $cond)]
 }
+
+# make valid json for posix to consume
+export def "sanatize posix" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
 
 #| strings.nu
 
-export alias conjoin-nl = str join (char nl)
-export alias conjoin = str join ''
+export alias conjoinl = str join (char newline)
+export alias conjoins = str join (char space)
+export alias conjoin  = str join (char nul)
 
 # remove all of char from string
 export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
@@ -91,14 +94,11 @@ export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
 # remove regex match from string
 export def "str purge" [expr: string] { $in | str replace -arm $expr '' }
 
-# replace repeating chars with a single one
+# replace repeating chars with only one
 export def "str squeeze" [char: string = ' '] { $in | str replace -a -r $'[($char)]+' $char }
 
 # join list into string with new lines
 export def "str join-nl" [...items] { $in | append $items | flatten | str join (char nl) }
-
-# dubble quote something for posix usage
-export def "str enquote" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
 
 #| platform.nu
 
@@ -108,7 +108,7 @@ export def --env clr [] { clear; reset }
 # prompt for confirmation
 export def confirm [
   prompt: string # message to query with
-  --invert # default to no insted of yes
+  --invert(-i) # default to no insted of yes
 ] {
   if $invert {
     (input -n 1 ($prompt + ' [N/y]: ')) =~ "n|N|\n"
@@ -120,8 +120,18 @@ export def confirm [
 #| system.nu
 
 # keep system awake while preforming a command
-export def wake-lock [...commands] {
-  doas systemd-inhibit --what=idle:sleep:handle-lid-switch -- ...$commands
+export def --wrapped wake-lock [
+  ...commands # task to wake lock while executing
+  --reason: string # why the system was wake locked
+  --super # run wake lock with super user permission
+] {
+  let cmd = [
+    (elif $super doas) systemd-inhibit
+    --what=idle:sleep:handle-lid-switch
+    --mode=block ...($reason | mk-flag why)
+    -- ...$commands
+  ] | filter {is-thing}
+  run-external (hd $cmd) ...(tl $cmd)
 }
 
 #| path.nu
@@ -149,17 +159,16 @@ export def "hash b3sum" [
 
 #| date.nu
 
-# current datetime with utc timezone
+# current or given datetime under utc timezone
 export def "date utc" [] {
-  let when = $in | default (date now)
-  $when | date to-timezone UTC
+  $in | default (date now) | date to-timezone UTC
 }
 
-# produce a sortable utc timestamp
+# produce a sortable intiger utc timestamp
 export def "date stamp" [
   when?: datetime
-  --precise(-p)
-  --hex(-x)
+  --precise(-p) # include micro seconds
+  --hex(-x) # produce hexadecimal output
 ] {
   let fine = elif $precise '%3f' ''
   let when = $when | default (date utc) | format date ('%y%m%d%H%M%S' + $fine) | into int
@@ -169,10 +178,21 @@ export def "date stamp" [
 #| misc.nu
 
 # Dvorak typist practice
-export alias dvorak-typist = gtypist --personal-best --scoring=cpm --max-error=2.0 --show-errors d.typ
+export alias dvorak-typist = ^gtypist --personal-best --scoring=cpm --max-error=2.0 --show-errors d.typ
 
 
 #| filesystem.nu
+
+# simpler linking
+export alias lnh = ^ln     # hard link
+export alias lns = ^ln -s  # soft link
+export alias lnr = ^ln -sr # rela link
+
+# create one or more directories
+export alias mkd = mkdir
+
+# create parent directory and touch file
+export def mkf [...items] { $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
 
 # create and enter directory
 export def --env mkcd [
@@ -185,17 +205,6 @@ export def --env mkcd [
   if ($mod | is-thing) { chmod -R $mod $trg }
   cd $trg
 }
-
-# simpler linking
-export alias lnh = ^ln     # hard link
-export alias lns = ^ln -s  # soft link
-export alias lnr = ^ln -sr # rela link
-
-# create one or more directories
-export alias mkd = mkdir
-
-# create parent directory and touch file
-export def mkf [...items] { $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
 
 # remove a symbolic link
 export alias rmln = str trim -r -c '/' | unlink
@@ -224,7 +233,7 @@ export def --wrapped synchro [
     --what=idle:sleep:handle-lid-switch -- ]
   let optargs = [ rsync
     -ahvir --sparse --partial --append-verify
-    --no-inc-recursive --progress --info=progress2 ]
+    --no-inc-recursive --progress --info=all4 ]
   let cmdline = (elif $super [doas])| append $inhibit | append $optargs
   run-external ($cmdline | hd) ...($cmdline | tl) ...$argv
 }
@@ -242,27 +251,8 @@ export def ejc [...targs: path] {
   }
 }
 
-# report the serial idenifier of a block device
-export def blkd-mark [dev: path] {
-  if (($dev | path type) != 'block device') {
-    failure 'not a block device' }
-  ( lsblk -ndo vendor,model,serial $dev
-  | str trim | str upcase
-  | str replace -ar '[^[:alnum:]]' '_'
-  | str replace -ar '[_]+' '_' )
-}
-
-# refine block device idenifier
-export def blkd-serl [dev: path] {
-  let mark = blkd-mark $dev
-  let wwid = lsblk -ndo wwn $dev
-  let uuid = nsidgen $mark
-  let stub = $uuid | str substring (-7)..
-  return {stub: $stub mark: $mark uuid: $uuid wwid: $wwid}
-}
-
 # locate mountpoint target with label
-export def "mnt get-target" [label?: string] {
+export def "mnt get-label" [label?: string] {
   let label = $in | default $label
   let found = findmnt -n --output target --source $label | str trim
   elif ($found | is-empty) null $found
@@ -274,6 +264,26 @@ export def "mnt is-alive" [target?] {
   if ($targ | path expand) in (sys disks).mount { return true } else {
     mnt get-targ $targ | is-not-empty
   }
+}
+
+# report the serial idenifier of a block device
+export def "blkd serl" [dev: path] {
+  if (($dev | path type) != 'block device') {
+    failure 'not a block device' }
+  ( lsblk -ndo vendor,model,serial $dev
+  | str trim | str upcase
+  | str replace -ar '[^[:alnum:]]' '_'
+  | str replace -ar '[_]+' '_' )
+}
+
+# refine block device idenifier
+export def "blkd iden" [dev: path] {
+  let serl = blkd serl $dev
+  let guid = lsblk -ndo uuid $dev
+  let wwid = lsblk -ndo wwn $dev
+  let uuid = nsidgen $serl
+  let mark = $uuid | str substring (-7)..
+  return {mark: $mark serl: $serl uuid: $uuid guid: $guid wwid: $wwid}
 }
 
 # applet for LUKSv2 sub-commands of cryptsetup
