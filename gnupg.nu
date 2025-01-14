@@ -86,30 +86,63 @@ const colon_feild = {
 # display artwork for keyid
 export def keyart [iden?] { ^keyart -c -l $iden }
 
-# run gpg with scripted input
-export def --wrapped evaluate [
-  ...optargs # arguments passed to command line
-  --payload(-i): list = [] # scripted inputs piped to gpg
-  --preargs(-o): list = [--expert --yes --no-tty] # first optargs in cmdline
+# force redetect of avalible smartcards
+export def recard [
+  --no-stat # skip reporting status
 ] {
-  let payload = $in | append $payload | flatten | str join nl
-  let cmdline = [
-    ...$preargs
-    --pinentry-mode=loopback --command-fd=0
-    --passphrase-file=($env.GNUPGHOME + /passwd.txt)
-    ...$optargs
-  ]
-  $payload | ^gpg ...$cmdline
+	callup "scd serialno" "learn --force" /bye | ignore; sleep 1sec
+  if not $no_stat { ^gpg --card-status; ykman info }
 }
 
 # deliver payload to the gnupg agent
-export def --wrapped callupon [...payload] {
+export def --wrapped callup [...payload] {
   let payload = $in | append $payload
-  gpg-connect-agent --subst --quiet --no-history --unbuffered ...$payload
+  ^gpg-connect-agent --subst --quiet --no-history --unbuffered ...$payload
+}
+
+# parse colons from gpg command
+export def --wrapped colonate [...optargs] {
+  ^gpg --with-colons ...$optargs | lines | par-each --keep-order {split row ':'}
+}
+
+# run gpg with scripted input
+export def --wrapped evaluate [
+  ...optargs # arguments passed to command line
+  --payload(-i): list = [] # scripted inputs piped to command
+  --preargs(-o): list = [--expert --yes --no-tty] # first optargs in cmdline
+  --keyfile(-k): path # password file location
+  --systime(-t): datetime # faked system time
+  # --hushrun(-q) # silence all output
+] {
+  let payload = $in | append $payload | flatten | str join nl
+  let keyfile = $keyfile | default ($env.GNUPGHOME + /passwd.txt)
+  let cmdline = [
+    $preargs --pinentry-mode=loopback --command-fd=0
+    ($systime | mk-flag faked-system-time {$systime | format date '%s'})
+    ($keyfile | mk-flag passphrase-file) $optargs
+  ] | flatten
+  $payload | ^gpg ...$cmdline
+}
+
+def finger-email [email: string] { ^gpg --list-options show-only-fpr-mbox -k $email | split words | first }
+def parse-byline [iden?: string] {
+  let mark0 = $in | default $iden
+  let mark1 = try { $mark0 | parse '{name} ({comment}) <{email}>' | move comment --after email }
+  let mark2 = try { $mark0 | parse '{name} <{email}>' | insert comment null }
+  if ($mark1 | is-empty) { return $mark2 } else { return $mark1 }
+}
+
+def find-byline [iden: string] { get-bylines | find $iden | first }
+def get-bylines [] {
+  (colonate -k | where {'uid' in $in}
+  | par-each {get 9 | parse-byline} | flatten
+  | upsert fingerprint {|idn| finger-email $idn.email }
+  | upsert keyid {|idn| $idn.fingerprint | str substring (-16).. }
+  | move keyid --before name )
 }
 
 # setup temp gnupg home dir
-export def --env mktemp-homedir [
+export def --env mkhome [
   --password-file: path # predefined password file
 ] {
   let target = mktemp -d gnupg.XXXXXX
@@ -133,25 +166,21 @@ export def --env mktemp-homedir [
   return $target
 }
 
-# listing of avalible public and secret keys
-export def key-list [] {
-  [public secret] | each {(
-    ^gpg --with-colons $'--list-($in)-keys' | lines
-    | par-each --keep-order { split row ':' | squish }
-  )} | flatten
-}
-
-# listing of all avalible fingerprints
-export def fpr-list [] { key-list | where {$in.0 =~ 'fpr|grp'} | each {skip 1} | flatten }
-
-# listing of known identities
-export def idn-list [] { ^gpg --list-options show-only-fpr-mbox -k | parse '{fingerprint} {mailbox}' }
-
-# force redetect avalible smartcards
-export def recard [
-  --quiet # skip reporting status
+# generate fresh ecdsa keyset
+export def mkcert [
+  owner: string # fullname of owner
+  email: string # digital mail address
+  --ctime(-c): datetime # creation moment
+  --etime(-e): datetime # expired moment
+  --skinny(-s) # skip generation of subkeys
 ] {
-	callupon "scd serialno" "learn --force" /bye | ignore
-	sleep 1sec
-  if not $quiet { ^gpg --card-status; ykman info }
+  let byline = $"($owner) <($email)>"
+  let create = $ctime | default (date now)
+  let expire = $etime | default ($create + 720day | format date '%Y-01-01' | into datetime)
+  let expire = ($expire - $create | format duration day | split row '.').0 + 'd'
+  evaluate --systime $create --quick-generate-key $byline ed25519 cert never o+e> (null-device)
+  let finger = find-byline $email | get fingerprint
+  if not $skinny { for kind in [ [ed25519 sign] [ed25519 auth] [cv25519 encr] ] {
+    evaluate --quick-add-key $finger ...$kind $expire o+e> (null-device) }}
+  return [$owner $email $finger]
 }

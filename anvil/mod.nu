@@ -78,6 +78,7 @@ export def mk-flag [flag item?] {
   let item = $item | default $cond
   if ($cond | is-empty) or ($cond == false) { return [] }
   if ($cond == true) and ($item == true) { return [$flag] }
+  # if ($item | of-type closure) { $cond | do $item }
   return [$flag (do-lazy $item $cond)]
 }
 
@@ -108,6 +109,11 @@ export def "str squeeze" [char: string = ' '] { $in | str replace -ar $'[($char)
 
 # reset and clear terminal
 export def --env clr [] { clear; reset }
+
+# silence all output from external commands
+export def --wrapped run-hushed [cmd: string ...optarg] {
+  run-external $cmd ...$optarg e+o> (null-device)
+}
 
 # prompt for confirmation
 export def confirm [
@@ -143,8 +149,7 @@ export def --wrapped wake-lock [
 
 #| random.nu
 
-# report random numbers available from /dev/urandom
-# values below 2000 can be raised with rng-tools
+# Report random numbers available from `/dev/urandom`. Raise values below 2000 with rng-tools
 export def "random entropy" [] { open /proc/sys/kernel/random/entropy_avail | into int }
 
 #| path.nu
@@ -199,12 +204,36 @@ export def open-port-scan [
   ports: range = 1..65535 # range of ports to check
   --timeout(-t): string = 5m # stop after given duration
 ] {
-  (nmap -sT --open --host-timeout $timeout $host -p $"($ports | first)-($ports | last)"
+  (^nmap -sT --open --host-timeout $timeout $host -p $"($ports | first)-($ports | last)"
   | str replace -a '/tcp' "" | lines -s | skip until {|| $in == 'PORT      STATE SERVICE' }
   | drop 1 | str join $"\n" | detect columns | reject STATE | into int PORT)
 }
 
 #| filesystem.nu
+
+# return directory module entrypoint file
+def get-module-shim [file: path] {
+  let item = $file | path parse
+  let file = $file | path basename
+  match $item.extention {
+    nu => 'mod.nu'
+    py => '__init__.py'
+    nix => 'default.nix'
+    _ => $file
+  }
+}
+
+# turn module file into directory module
+export def shim-module-file [
+  file: path # target moved into self named directory
+  shim?: string # entrypoint module file for language
+] {
+  let targ = $file | path parse
+  let shim = $shim | default (get-module-shim $file)
+  let base = $targ.parent | path join $targ.stem
+  let dest = $base | path join $shim
+  mkdir $base; mv $file $dest
+}
 
 # simpler linking
 export alias lnh = ^ln     # hard link
