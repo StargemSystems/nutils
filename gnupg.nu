@@ -92,7 +92,7 @@ export def --wrapped evaluate [
   --payload(-i): list = [] # scripted inputs piped to gpg
   --preargs(-o): list = [--expert --yes --no-tty] # first optargs in cmdline
 ] {
-  let payload = $in | append $payload | flatten | str join (char nl)
+  let payload = $in | append $payload | flatten | str join nl
   let cmdline = [
     ...$preargs
     --pinentry-mode=loopback --command-fd=0
@@ -102,9 +102,15 @@ export def --wrapped evaluate [
   $payload | ^gpg ...$cmdline
 }
 
+# deliver payload to the gnupg agent
+export def --wrapped callupon [...payload] {
+  let payload = $in | append $payload
+  gpg-connect-agent --subst --quiet --no-history --unbuffered ...$payload
+}
+
 # setup temp gnupg home dir
 export def --env mktemp-homedir [
-  --password-file: path
+  --password-file: path # predefined password file
 ] {
   let target = mktemp -d gnupg.XXXXXX
   let passwd = $target + /passwd.txt
@@ -125,4 +131,27 @@ export def --env mktemp-homedir [
   ^gpg-connect-agent --homedir $target --quiet /bye e+o> (null-device)
   ^gpg --homedir $target --rebuild-keydb-caches e+o> (null-device)
   return $target
+}
+
+# listing of avalible public and secret keys
+export def key-list [] {
+  [public secret] | each {(
+    ^gpg --with-colons $'--list-($in)-keys' | lines
+    | par-each --keep-order { split row ':' | squish }
+  )} | flatten
+}
+
+# listing of all avalible fingerprints
+export def fpr-list [] { key-list | where {$in.0 =~ 'fpr|grp'} | each {skip 1} | flatten }
+
+# listing of known identities
+export def idn-list [] { ^gpg --list-options show-only-fpr-mbox -k | parse '{fingerprint} {mailbox}' }
+
+# force redetect avalible smartcards
+export def recard [
+  --quiet # skip reporting status
+] {
+	callupon "scd serialno" "learn --force" /bye | ignore
+	sleep 1sec
+  if not $quiet { ^gpg --card-status; ykman info }
 }
