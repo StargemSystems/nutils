@@ -82,9 +82,6 @@ export def mk-flag [flag item?] {
   return [$flag (do-lazy $item $cond)]
 }
 
-# make valid json for posix to consume
-export def "sanatize posix" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
-
 #| formats.nu
 
 
@@ -104,6 +101,9 @@ export def "str purge" [expr: string] { $in | str replace -arm $expr '' }
 
 # replace repeating chars with only one
 export def "str squeeze" [char: string = ' '] { $in | str replace -ar $'[($char)]+' $char }
+
+# escape all quotes then wrap in quotes for posix consumption
+export def "str enquote" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
 
 #| platform.nu
 
