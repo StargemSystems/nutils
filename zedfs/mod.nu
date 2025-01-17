@@ -2,22 +2,22 @@
 
 use ../anvil *
 
-# filesystem applet
+# Zed filesystem applet.
 export alias zfs = doas zfs
 
-# dataset applet
+# Zed dataset applet.
 export alias zds = doas zpool
 
-# subvolume applet
+# Zed subvolume applet.
 export alias zol = zfs subvolume
 
-# dataset and volume listing
+# ZedFs dataset and volume listings.
 export def zls [...targs] {
   (zfs list -r -t all -o all ...$targs
   | detect columns | rename --block { str downcase })
 }
 
-# get and set zedfs properties
+# Either get or set zedfs properties.
 export def zet [trg key val?] {
   if ($val == null) {
     try { zfs get -Ho value $key $trg e> (null-device)

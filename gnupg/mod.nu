@@ -85,10 +85,10 @@ const colon_feild = {
   17: 'Curve name'
 }
 
-# display artwork for keyid
+# Display artwork for some keyid.
 export def keyart [iden?] { ^keyart -c -l $iden }
 
-# force redetect of avalible smartcards
+# Force redetection of avalible smartcards.
 export def recard [
   --no-stat # skip reporting status
 ] {
@@ -96,18 +96,18 @@ export def recard [
   if not $no_stat { ^gpg --card-status; ykman info }
 }
 
-# deliver payload to the gnupg agent
+# Deliver payload to the gnupg agent.
 export def --wrapped callup [...payload] {
   let payload = $in | append $payload
   ^gpg-connect-agent --subst --quiet --no-history --unbuffered ...$payload
 }
 
-# parse colons from gpg command
+# Parse colons from gpg command output.
 export def --wrapped colonate [...optargs] {
   ^gpg --with-colons ...$optargs | lines | par-each --keep-order {split row ':'}
 }
 
-# run gpg command with scripted input
+# Run gpg command with scripted input.
 export def --wrapped evaluate [
   ...optargs # arguments passed to command line
   --payload(-i): list = [] # scripted inputs piped to command
@@ -143,7 +143,7 @@ def get-bylines [] {
   | move keyid --before name )
 }
 
-# setup temp gnupg home dir
+# Setup temp gnupg home directory.
 export def --env mkhome [
   --password-file: path # predefined password file
 ] {
@@ -168,7 +168,7 @@ export def --env mkhome [
   return $target
 }
 
-# generate fresh ecdsa keyset
+# Generate fresh ecdsa keyset.
 export def mkcert [
   owner: string # fullname of owner
   email: string # digital mail address

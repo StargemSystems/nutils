@@ -10,7 +10,7 @@ use ../anvil *
 #   }
 # }
 
-# Turn an oil style regular expression into standard form
+# Turn an oil style regular expression into standard form.
 export def eggex [...expr] { ^ysh -c $'write $[/ ($expr | str join sp) /]' }
 
 # def fits_into [type: string item?] {
