@@ -1,6 +1,4 @@
-#! /usr/bin/env nu
-#|
-#| NixOS Utilities
+# NixOS and Nix
 
 use ../anvil *
 
@@ -20,9 +18,9 @@ export module nix {
 use nix
 
 # evaluate nix expression into nu data types
-export def "from nix" [] { $in | nix eval --json | from json }
+export def "from nix" [] { $in | ^nix eval --json | from json }
 
 # generate nix expression from nu data types
-export def "to nix" [] { $in | str enquote | nix eval --apply 'builtins.fromJSON' }
+export def "to nix" [] { $in | str enquote | ^nix eval --apply 'builtins.fromJSON' }
 
 #|

@@ -1,4 +1,4 @@
-# Android Workbench Toolkit
+# Android Workbench
 
 use ../anvil *
 
@@ -12,11 +12,12 @@ export alias fb = ^fastboot
 def wait_targs [] { [ device recovery rescue sideload bootloader disconnect ] }
 def reboot_targs [] { [ bootloader recovery device poweroff sideload sideload-auto-reboot ] }
 
-# block until state is reached
+# block until android state is reached
 export def wait [
   state?: string@wait_targs = 'device'
-  --usb --tcp
+  --usb # listen over only usb transport
+  --tcp # listen over only net transport
 ] {
   let tran = if $usb {'usb'} else if $tcp {'local'} else {'any'}
-  [ wait-for $tran $state ] | str join '-' | adb $in
+  [ wait-for $tran $state ] | str join '-' | ^adb $in
 }

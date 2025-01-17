@@ -4,27 +4,29 @@ use ../anvil *
 
 const gnupg_confs = {
   basic: '
+    armor
+    use-agent
     no-greeting
     no-comments
+    throw-keyids
     charset utf-8
     no-emit-version
+    no-symkey-cache
     keyid-format 0xlong
+    require-cross-certification
+    list-options show-uid-validity
+    verify-options show-uid-validity
+    default-keyserver-url hkps://keys.openpgp.org
+    default-new-key-algo ed25519/cert,sign+cv25519/encr
     with-subkey-fingerprint
     with-v5-fingerprint
     with-fingerprint
     with-keygrip
-    require-cross-certification
-    default-keyserver-url hkps://keys.openpgp.org
-    default-new-key-algo ed25519/cert,sign+cv25519/encr
+
+    # For older gnupg versions only. On newer versions, this is already the default.
     # default-preference-list SHA512 SHA384 SHA256 AES256 AES192 AES ZLIB BZIP2 ZIP Uncompressed
     # s2k-digest-algo SHA512
     # s2k-cipher-algo AES256
-    verify-options show-uid-validity
-    list-options show-uid-validity
-    # no-symkey-cache
-    throw-keyids
-    use-agent
-    armor
   '
   agent: '
     max-cache-ttl 120
@@ -105,7 +107,7 @@ export def --wrapped colonate [...optargs] {
   ^gpg --with-colons ...$optargs | lines | par-each --keep-order {split row ':'}
 }
 
-# run gpg with scripted input
+# run gpg command with scripted input
 export def --wrapped evaluate [
   ...optargs # arguments passed to command line
   --payload(-i): list = [] # scripted inputs piped to command
@@ -181,6 +183,6 @@ export def mkcert [
   evaluate --systime $create --quick-generate-key $byline ed25519 cert never o+e> (null-device)
   let finger = find-byline $email | get fingerprint
   if not $skinny { for kind in [ [ed25519 sign] [ed25519 auth] [cv25519 encr] ] {
-    evaluate --quick-add-key $finger ...$kind $expire o+e> (null-device) }}
+    evaluate --systime ($create + 2sec) --quick-add-key $finger ...$kind $expire o+e> (null-device) }}
   return [$owner $email $finger]
 }

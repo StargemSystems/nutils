@@ -28,6 +28,13 @@ export def zet [trg key val?] {
   }
 }
 
+# ZedFs Unified Keyslot Storage
+
+# get dedails of luks encrypted zedfs volume
 # export def "zuks report" [] {}
+
+# setup new luks encrypted zedfs volume
 # export def "zuks create" [] {}
+
+# decrypt luks encrypted zedfs volume
 # export def "zuks unlock" [] {}
