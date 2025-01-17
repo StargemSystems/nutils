@@ -24,16 +24,6 @@
         installPhase = ''
           mkdir -p $out/share/nushell
           cp -r $src $out/share/nushell/nutils
-
-          # trg="$out/share/nushell/nutils"
-          # mkdir -p $trg
-          # cp $scr/mod.nu $trg
-          # cp -r $scr/anvil $trg
-          # cp -r $scr/droid $trg
-          # cp -r $scr/gnupg $trg
-          # cp -r $scr/nixos $trg
-          # cp -r $scr/regex $trg
-          # cp -r $scr/zedfs $trg
         '';
         meta = {
           description = "NuShell utility toolkit and standard library";
