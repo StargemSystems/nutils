@@ -17,7 +17,7 @@
       packages.nushell = pkgs.nushell;
       packages.nu_scripts = pkgs.nu_scripts;
 
-      packages.nutils = pkgs.stdenv.mkDerivation rec {
+      packages.nutils = pkgs.stdenv.mkDerivation {
         src = ./.;
         pname = "nutils";
         version = "0.7.0";
@@ -30,6 +30,13 @@
           description = "NuShell utility toolkit and standard library";
           # maintainers = [ inputs.hackit.lib.maintainers.StargemSystems ]
           license = pkgs.lib.licenses.mit;
+          longDescription = ''
+            Append the NuShell library search path and bring our anvil into scope:
+              ```nu
+                $env.NU_LIB_DIRS = $env.NU_LIB_DIRS | append $out/share/nushell
+                use nutils/anvil *
+              ```
+          '';
         };
       };
     };
