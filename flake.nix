@@ -1,8 +1,9 @@
 {
   description = "NuShell Utility Library";
 
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   inputs.flake-parts.url = "github:hercules-ci/flake-parts";
-  inputs.hackit.url = "github:StargemSystems/hackit";
+  # inputs.hackit.url = "github:StargemSystems/hackit";
 
   outputs = inputs@{...}:
   inputs.flake-parts.lib.mkFlake { inherit inputs; } {
@@ -10,6 +11,8 @@
     # imports = [ ];
 
     perSystem = toplevel@{ config, self', inputs', pkgs, system, ... }: {
+      # _module.args.pkgs = import inputs.hackit.inputs.nixpkgs { inherit system; };
+
       packages.default = config.packages.nutils;
       packages.nushell = pkgs.nushell;
 
@@ -19,10 +22,18 @@
         version = "0.7.0";
         dontBuild = true;
         installPhase = ''
-          mkdir $out/share/nushell
+          mkdir -p $out/share/nushell
           cp -r $src $out/share/nushell/nutils
-          rm $out/share/nushell/nutils/flake.*
-          rm $out/share/nushell/nutils/.gitignore
+
+          # trg="$out/share/nushell/nutils"
+          # mkdir -p $trg
+          # cp $scr/mod.nu $trg
+          # cp -r $scr/anvil $trg
+          # cp -r $scr/droid $trg
+          # cp -r $scr/gnupg $trg
+          # cp -r $scr/nixos $trg
+          # cp -r $scr/regex $trg
+          # cp -r $scr/zedfs $trg
         '';
         meta = {
           description = "NuShell utility toolkit and standard library";
