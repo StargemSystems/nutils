@@ -15,6 +15,7 @@
 
       packages.default = config.packages.nutils;
       packages.nushell = pkgs.nushell;
+      packages.nu_scripts = pkgs.nu_scripts;
 
       packages.nutils = pkgs.stdenv.mkDerivation rec {
         src = ./.;
