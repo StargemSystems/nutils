@@ -111,41 +111,53 @@ export def --wrapped colonate [...optargs] {
 export def --wrapped evaluate [
   ...optargs # arguments passed to command line
   --payload(-i): list = [] # scripted inputs piped to command
-  --preargs(-o): list = [--expert --yes --no-tty] # first optargs in cmdline
+  --preargs(-o): list = [--expert --yes] # first optargs in cmdline
   --keyfile(-k): path # password file location
-  --systime(-t): datetime # faked system time
-  # --hushrun(-q) # silence all output
+  # --systime(-t): datetime # faked system time
+  --hushrun(-q) # silence all output
 ] {
   let payload = $in | append $payload | flatten | str join nl
   let keyfile = $keyfile | default ($env.GNUPGHOME + /passwd.txt)
   let cmdline = [
-    $preargs --pinentry-mode=loopback --command-fd=0
-    ($systime | mk-flag faked-system-time {$systime | format date '%s'})
+    ($hushrun | mk-flag quiet) ($hushrun | mk-flag no-tty) $preargs
+    --pinentry-mode=loopback --command-fd=0 --status-fd=2 --attribute-fd=2
+    # ($systime | mk-flag faked-system-time {$systime | format date '%s'})
     ($keyfile | mk-flag passphrase-file) $optargs
   ] | flatten
-  $payload | ^gpg ...$cmdline
+  if $hushrun {
+    $payload | ^gpg ...$cmdline e> (null-device)
+  } else {
+    $payload | ^gpg ...$cmdline
+  }
 }
 
-def finger-email [email: string] { ^gpg --list-options show-only-fpr-mbox -k $email | split words | first }
+export def edit-keys [id: string] {
+  $env.GPG_TTY = (tty)
+  (^gpg
+    --pinentry-mode=loopback
+    --passphrase-file ($env.GNUPGHOME + /passwd.txt)
+    --expert --edit-key $id)
+}
+
+export def list-pubkeys [] { colonate -k | where {$in.0 == 'pub'} | each {get 4} }
+export def list-userids [] { colonate -k | where {$in.0 == 'uid'} | each {get 9} | uniq }
+export def list-subkeys [id: string] { colonate -k $id | where {$in.0 == 'sub'} | each {get 4 11 16} }
+export def list-fingers [] { ^gpg --list-options show-only-fpr-mbox -k | lines | parse '{fingerprint} {email}' }
+export def list-bylines [] { list-userids | each {parse-byline} }
+
 def parse-byline [iden?: string] {
   let mark0 = $in | default $iden
   let mark1 = try { $mark0 | parse '{name} ({comment}) <{email}>' | move comment --after email }
   let mark2 = try { $mark0 | parse '{name} <{email}>' | insert comment null }
   if ($mark1 | is-empty) { return $mark2 } else { return $mark1 }
-}
+  }
 
-def find-byline [iden: string] { get-bylines | find $iden | first }
-def get-bylines [] {
-  (colonate -k | where {'uid' in $in}
-  | par-each {get 9 | parse-byline} | flatten
-  | upsert fingerprint {|idn| finger-email $idn.email }
-  | upsert keyid {|idn| $idn.fingerprint | str substring (-16).. }
-  | move keyid --before name )
-}
+export def --env restore-homedir [] { $env.GNUPGHOME = $env.OLD_GNUPGHOME; return $env.OLD_GNUPGHOME }
 
 # Setup temp gnupg home directory.
 export def --env mkhome [
-  --password-file: path # predefined password file
+  --password-file: path # predefine insted of generate password file
+  --import-gpgfile: path # auto import and trust keys from file
 ] {
   let target = mktemp -d gnupg.XXXXXX
   let passwd = $target + /passwd.txt
@@ -153,36 +165,82 @@ export def --env mkhome [
   'disable-ccid' | save ($target + /scdaemon.conf)
   $gnupg_confs.basic | save ($target + /gpg.conf)
   $gnupg_confs.agent | save ($target + /gpg-agent.conf)
-  if $password_file { cp $password_file $passwd }
-  if not ($passwd | path exists) {
-    seq 1 6 | each {random chars -l 8 | str upcase}
-    | str join sp | save $passwd
+  if ($password_file | is-thing) and ($password_file | path exists) {
+    cp $password_file $passwd
+  } else {
+    seq 1 6 | each {random chars -l 8 | str upcase} | str join sp | save $passwd
   }
   claim $target
   ^gpgconf --kill all e+o> (null-device)
   $env.OLD_GNUPGHOME = $env.GNUPGHOME
   $env.GNUPGHOME = $target
   $env.GPG_TTY = (tty)
-  ^gpg-connect-agent --homedir $target --quiet /bye e+o> (null-device)
-  ^gpg --homedir $target --rebuild-keydb-caches e+o> (null-device)
+  $env.SSH_AUTH_SOCK = (^gpgconf --list-dirs agent-ssh-socket)
+  ^gpgconf --launch gpg-agent e+o> (null-device)
+  ^gpg-connect-agent --quiet updatestartuptty /bye e+o> (null-device)
+  ^gpg --rebuild-keydb-caches e+o> (null-device)
+  if ($import_gpgfile | is-thing) and ($import_gpgfile | path exists) {
+    (^gpg --pinentry-mode=loopback
+      --passphrase-file $passwd
+      --import $import_gpgfile e+o> (null-device))
+    list-userids | each {ult-trust}
+  }
   return $target
 }
 
-# Generate fresh ecdsa keyset.
+# Generate fresh ecdsa certify key.
 export def mkcert [
   owner: string # fullname of owner
   email: string # digital mail address
-  --ctime(-c): datetime # creation moment
-  --etime(-e): datetime # expired moment
-  --skinny(-s) # skip generation of subkeys
 ] {
   let byline = $"($owner) <($email)>"
-  let create = $ctime | default (date now)
-  let expire = $etime | default ($create + 720day | format date '%Y-01-01' | into datetime)
-  let expire = ($expire - $create | format duration day | split row '.').0 + 'd'
-  evaluate --systime $create --quick-generate-key $byline ed25519 cert never o+e> (null-device)
-  let finger = find-byline $email | get fingerprint
-  if not $skinny { for kind in [ [ed25519 sign] [ed25519 auth] [cv25519 encr] ] {
-    evaluate --systime ($create + 2sec) --quick-add-key $finger ...$kind $expire o+e> (null-device) }}
-  return [$owner $email $finger]
+  let mykeys = list-pubkeys
+  evaluate -q --quick-generate-key $byline ed25519 cert never
+  list-pubkeys | where {|it| not ($it in $mykeys)} | first
+}
+
+# Generate fresh set of ecdsa subkeys.
+export def mksubs [
+  finger: string # cert key fingerprint
+  --expire: duration = 720day
+] {
+  let expire = $expire | format duration day | split row ' ' | get 0
+  [
+    [addkey 10 1 $expire y y]
+    [addkey 11 S A Q 1 $expire y y]
+    [addkey 12 1 $expire y y] [save y]
+  ] | flatten | evaluate -q --expert --edit-key $finger
+}
+
+# export keyset to backup directory
+export def backup [keyid: string targ?: path] {
+  let targ = ($targ | default $env.PWD) + $"/($keyid)-(date stamp)"
+  mkdir $targ; cp ($env.GNUPGHOME + /passwd.txt) $targ
+  evaluate -q --output ($targ + /certkey.gpg) --export-secret-keys $keyid
+  evaluate -q --output ($targ + /subkeys.gpg) --export-secret-subkeys $keyid
+  evaluate -q --output ($targ + /public.ssh) --export-ssh-key $keyid
+  evaluate -q --output ($targ + /public.key) --export $keyid
+}
+
+# embed subkeys into smartcard
+export def keys2card [
+  keyid: string # gnupg key identity
+  scpin: int # smartcard admin pin
+] {
+  [
+    'key 1' keytocard 1 $scpin $scpin 'key 0'
+    'key 2' keytocard 3 $scpin $scpin 'key 0'
+    'key 3' keytocard 2 $scpin $scpin 'key 0'
+    save
+  ] | evaluate --edit-key $keyid
+}
+
+# trust the user id ultimately
+export def ult-trust [id?: string] {
+  let id = $in | default $id
+  [ 'uid 1' trust 5 y q ] | evaluate -q --edit-key $id
+}
+
+export def openpgp-upload [keyid: string] {
+  evaluate -q --export $keyid | curl -T - https://keys.openpgp.org
 }
