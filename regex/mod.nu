@@ -2,13 +2,12 @@
 
 use ../anvil *
 
-# export-env {
-#   $env.regex_pallet = {
-#     hexDigit: ''
-#     emailAddress: ''
-#     uuid: ''
-#   }
-# }
+export-env {
+  $env.regex_pallet = {
+    # emailAddress: '(account)@(domain)'
+    uuid: '([[:xdigit:]]{8})([[:xdigit:]]{4})([[:xdigit:]]{4})([[:xdigit:]]{4})([[:xdigit:]]{12})'
+  }
+}
 
 # Turn an oil style regular expression into standard form.
 export def eggex [...expr] { ^ysh -c $'write $[/ ($expr | str join sp) /]' }

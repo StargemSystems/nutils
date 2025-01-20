@@ -8,35 +8,27 @@
   outputs = inputs@{...}:
   inputs.flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" "aarch64-linux" ];
-    # imports = [ ];
-
     perSystem = toplevel@{ config, self', inputs', pkgs, system, ... }: {
-      # _module.args.pkgs = import inputs.hackit.inputs.nixpkgs { inherit system; };
-
-      packages.default = config.packages.nutils;
       packages.nushell = pkgs.nushell;
-      packages.nu_scripts = pkgs.nu_scripts;
-
-      packages.nutils = pkgs.stdenv.mkDerivation {
+      packages.scripts = pkgs.nu_scripts;
+      packages.default = config.packages.nutils;
+      packages.nutils = pkgs.stdenvNoCC.mkDerivation {
         src = ./.;
         pname = "nutils";
         version = "0.7.0";
         dontBuild = true;
         installPhase = ''
-          mkdir -p $out/share/nushell
-          cp -r $src $out/share/nushell/nutils
+          mkdir -p $out/share/nushell/nutils
+          cp -r $src/* ./
+          rm ./*.nix
+          rm ./flake.lock
+          rm ./README.md
+          mv ./* $out/share/nushell/nutils
         '';
         meta = {
+          license = pkgs.lib.licenses.mit;
           description = "NuShell utility toolkit and standard library";
           # maintainers = [ inputs.hackit.lib.maintainers.StargemSystems ]
-          license = pkgs.lib.licenses.mit;
-          longDescription = ''
-            Append the NuShell library search path and bring our anvil into scope:
-              ```nu
-                $env.NU_LIB_DIRS = $env.NU_LIB_DIRS | append $out/share/nushell
-                use nutils/anvil *
-              ```
-          '';
         };
       };
     };
