@@ -3,7 +3,10 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   inputs.flake-parts.url = "github:hercules-ci/flake-parts";
+
   # inputs.hackit.url = "github:StargemSystems/hackit";
+  # inputs.nixpkgs.follows = "hackit";
+  # inputs.flake-parts.follows = "hackit";
 
   outputs = inputs@{...}:
   inputs.flake-parts.lib.mkFlake { inherit inputs; } {
@@ -27,7 +30,7 @@
         '';
         meta = {
           license = pkgs.lib.licenses.mit;
-          description = "NuShell utility toolkit and standard library";
+          description = "NuShell utility toolkit and extended standard library";
           # maintainers = [ inputs.hackit.lib.maintainers.StargemSystems ]
         };
       };
