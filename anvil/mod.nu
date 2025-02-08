@@ -2,7 +2,7 @@
 
 #====================================================#
 
-export use std [null-device]
+export use std [null-device "path add"]
 
 #| core.nu
 
