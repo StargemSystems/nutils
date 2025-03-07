@@ -9,6 +9,8 @@
     nativeBuildInputs = [ p.jq p.jo p.ripgrep ] ++ deps;
   } cmds;
 
+  # buildPluginRegistry = targets: {};
+
 	# runNuCommand = name: attrs: script: p.runCommandWith {
   #   inherit name;
   #   stdenv = p.nuenv;

@@ -12,6 +12,7 @@
   inputs.flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" "aarch64-linux" ];
     perSystem = toplevel@{ config, self', inputs', pkgs, system, ... }: {
+      packages.oil = pkgs.oils-for-unix;
       packages.nushell = pkgs.nushell;
       packages.scripts = pkgs.nu_scripts;
       packages.default = config.packages.nutils;
@@ -21,12 +22,16 @@
         version = "0.7.0";
         dontBuild = true;
         installPhase = ''
-          mkdir -p $out/share/nushell/nutils
+          mkdir -p $out/share/nushell/{scripts,plugins,configs}
+          touch $out/share/nushell/configs/{env,run}.nu
+
+          mkdir $out/share/nushell/scripts/nutils
           cp -r $src/* ./
           rm ./*.nix
           rm ./flake.lock
           rm ./README.md
-          mv ./* $out/share/nushell/nutils
+          mv ./* $out/share/nushell/scripts/nutils
+          echo "example include: `nu -I $out/share/nushell/scripts --login`"
         '';
         meta = {
           license = pkgs.lib.licenses.mit;

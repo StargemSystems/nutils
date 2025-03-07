@@ -53,8 +53,18 @@ export def reorder [...headers] { $in | move ...(tl $headers) --after (hd $heade
 
 # Flatten list and or unwrap singleton.
 export def squish [...items] {
-  let flat = $in | append $items | flatten | where {is-thing}
+  let flat = $in | append $items | flatten deep -n
   if ($flat | length) == 1 { $flat | first } else { $flat }
+}
+
+# Fully flatten list of lists and values
+export def "flatten deep" [
+  ...rest # appended to input
+  --strip-nulls(-n) # reject empty values
+] {
+  mut it = $in | append $rest
+  while ($it | any {of-type list}) {$it = $it | flatten --all }
+  if $strip_nulls { $it | where {is-thing} } else { return $it }
 }
 
 #| generators.nu
@@ -99,13 +109,13 @@ export def "str range" [span: range] { $in | str substring -b $span }
 # Remove all of char from string.
 export def "str strip" [char: string = ' '] { $in | str replace -a $char '' }
 
-# Remove regex match from string.
+# Remove all regex matches from string.
 export def "str purge" [expr: string] { $in | str replace -arm $expr '' }
 
-# Replace repeating chars with only one.
+# Replace repeating chars with a single one.
 export def "str squeeze" [char: string = ' '] { $in | str replace -ar $'[($char)]+' $char }
 
-# Escape all quotes then wrap in quotes for posix consumption.
+# Escape all quotes for posix consumption.
 export def "str enquote" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
 
 #| platform.nu
@@ -122,12 +132,16 @@ export def --wrapped run-hushed [cmd: string ...optarg] {
 export def confirm [
   prompt: string # message to query with
   --invert(-i) # default to no insted of yes
+  --failed(-f): string # cancellation message
 ] {
-  if $invert {
+  let res = if $invert {
     (input -n 1 ($prompt + ' [N/y]: ')) =~ "n|N|\n"
   } else {
     (input -n 1 ($prompt + ' [Y/n]: ')) =~ "y|Y|\n"
   }
+  if (($failed | is-thing) and (not $res)) {
+    failure $failed
+  } else { return $res }
 }
 
 #| system.nu
@@ -160,12 +174,7 @@ export def "random entropy" [] { open /proc/sys/kernel/random/entropy_avail | in
 # Flatten and join list into clean path.
 export def "path flat-join" [
   ...segments # items to concatanate
-  --expand(-x) # apply path expantion
-] {
-  let result = ($in | append $segments
-  | flatten --all | where {is-not-empty} | path join)
-  if $expand { $result | path expand } else { return $result }
-}
+] { $in | append $segments | flatten deep -n | path join }
 
 #| hash.nu
 
@@ -189,9 +198,9 @@ export def "date stamp" [
   --precise(-p) # include micro seconds
   --hex(-x) # produce hexadecimal output
 ] {
-  let fine = elif $precise '%3f' ''
-  let when = $when | default (date utc) | format date ('%y%m%d%H%M%S' + $fine) | into int
-  if $hex { $when | fmt | get upperhex | str substring 2.. } else { $when }
+  let fine = if $precise {'%3f'} else {''}
+  let when = $in | default $when | default (date utc) | format date $"%Y%m%d%H%M%S($fine)" | into int
+  if $hex { $when | format number | get upperhex | str range 2.. } else { $when }
 }
 
 #| misc.nu
@@ -248,7 +257,11 @@ export alias lnr = ^ln -sr # rela link
 export alias mkd = mkdir
 
 # Create parent directory and touch file.
-export def mkf [...items] { $in | append $items | par-each {|it| $it | path dirname | mkdir $in; touch $it }; ignore }
+export def mkf [...items] {
+  $in | append $items | par-each {|it|
+    $it | path dirname | mkdir $in; touch $it
+  }; ignore
+}
 
 # Create and enter directory.
 export def --env mkcd [
@@ -309,7 +322,7 @@ export alias mnt = doas mount --mkdir
 export def ejc [...targets: path] {
   for trg in $targets {
     doas umount --quiet --recursive $trg
-    rmdir $trg
+    doas rmdir $trg | ignore
   }
 }
 
@@ -332,10 +345,10 @@ export def "mnt is-alive" [target?] {
 export def "blkd serl" [dev: path] {
   if (($dev | path type) != 'block device') {
     failure 'not a block device' }
-  ( lsblk -ndo vendor,model,serial $dev
+  (lsblk -ndo vendor,model,serial $dev
   | str trim | str upcase
-  | str replace -ar '[^[:alnum:]]' '_'
-  | str replace -ar '[_]+' '_' )
+  | str replace -ar (eggex '!alnum') '_'
+  | str squeeze '_')
 }
 
 # Refine block device idenifier.
@@ -344,7 +357,7 @@ export def "blkd iden" [dev: path] {
   let guid = lsblk -ndo uuid $dev
   let wwid = lsblk -ndo wwn $dev
   let uuid = nsidgen $serl
-  let mark = $uuid | str substring (-7)..
+  let mark = $uuid | str range (-7)..
   return {mark: $mark serl: $serl uuid: $uuid guid: $guid wwid: $wwid}
 }
 
