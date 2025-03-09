@@ -75,21 +75,47 @@ export def nsidgen [
   --namespace(-n) = '@oid' # uuid to derive id from
 ] {
   let ns = if ($namespace | of-type binary) { $namespace | format uuid } else { $namespace }
-  $in | default $seed | ^uuidgen --sha1 --namespace $ns --name $in | format uuid
+  $in | default $seed | ^uuidgen --sha1 --namespace $ns --name $in | format uuid raw $in
 }
 
 #| transforms.nu
+
+# Format uuid as binary
+export def "format uuid raw" [uuid: string] {
+  $uuid | str trim | str strip '-' | decode hex
+  # match (what-is $uuid) {
+    # string => { $uuid | str trim | str strip '-' | decode hex }
+    # binary => { $uuid }
+  # }
+}
+
+# Format uuid as string
+export def "format uuid str" [uuid: binary] {
+  let x = ($uuid | encode hex --lower | split chars
+  | chunks 4 | par-each --keep-order {str join})
+  $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+  # match (what-is $uuid) {
+  #   string => { $uuid }
+  #   binary => {
+  #     let x = ($uuid | encode hex --lower | split chars
+  #     | chunks 4 | par-each --keep-order {str join})
+  #     $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+  #   }
+  # }
+}
 
 # Transform uuid between raw binary and formatted string.
 export def "format uuid" [uuid?] {
   let uuid = $in | default $uuid
   match (what-is $uuid) {
-    string => { $uuid | str trim | str strip '-' | decode hex }
-    binary => {
-      let x = ($uuid | encode hex --lower | split chars
-      | chunks 4 | par-each --keep-order {str join})
-      $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
-    }
+    string => { format uuid raw $uuid }
+    binary => { format uuid str $uuid }
+    # string => { $uuid | str trim | str strip '-' | decode hex }
+    # binary => {
+      # let x = ($uuid | encode hex --lower | split chars
+      # | chunks 4 | par-each --keep-order {str join})
+      # $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+    # }
     $it => { error make {
       msg: $'invalid type `($it)` provided'
       help: 'try with a `binary` or `string` uuid' }
