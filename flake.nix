@@ -12,8 +12,8 @@
   inputs.flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" "aarch64-linux" ];
     perSystem = toplevel@{ config, self', inputs', pkgs, system, ... }: {
+      packages.nu = pkgs.nushell;
       packages.oil = pkgs.oils-for-unix;
-      packages.nushell = pkgs.nushell;
       packages.scripts = pkgs.nu_scripts;
       packages.default = config.packages.nutils;
       packages.nutils = pkgs.stdenvNoCC.mkDerivation {

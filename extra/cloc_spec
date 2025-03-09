@@ -1,0 +1,6 @@
+NuShell
+    filter remove_matches ^\s*#
+    filter remove_inline #.*$
+    script_exe nu
+    extension nu
+    3rd_gen_scale 1.00
