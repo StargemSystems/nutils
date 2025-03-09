@@ -75,33 +75,19 @@ export def nsidgen [
   --namespace(-n) = '@oid' # uuid to derive id from
 ] {
   let ns = if ($namespace | of-type binary) { $namespace | format uuid } else { $namespace }
-  $in | default $seed | ^uuidgen --sha1 --namespace $ns --name $in | format uuid raw $in
+  $in | default $seed | ^uuidgen --sha1 --namespace $ns --name $in | format uuid raw
 }
 
 #| transforms.nu
 
 # Format uuid as binary
-export def "format uuid raw" [uuid: string] {
-  $uuid | str trim | str strip '-' | decode hex
-  # match (what-is $uuid) {
-    # string => { $uuid | str trim | str strip '-' | decode hex }
-    # binary => { $uuid }
-  # }
-}
+export def "format uuid raw" [id?: string] { $in | default $id | str trim | str strip '-' | decode hex }
 
 # Format uuid as string
-export def "format uuid str" [uuid: binary] {
-  let x = ($uuid | encode hex --lower | split chars
-  | chunks 4 | par-each --keep-order {str join})
+export def "format uuid str" [id?: binary] {
+  let x = ($in | default $id | encode hex --lower
+  | split chars | chunks 4 | par-each --keep-order {str join})
   $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
-  # match (what-is $uuid) {
-  #   string => { $uuid }
-  #   binary => {
-  #     let x = ($uuid | encode hex --lower | split chars
-  #     | chunks 4 | par-each --keep-order {str join})
-  #     $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
-  #   }
-  # }
 }
 
 # Transform uuid between raw binary and formatted string.
@@ -110,12 +96,6 @@ export def "format uuid" [uuid?] {
   match (what-is $uuid) {
     string => { format uuid raw $uuid }
     binary => { format uuid str $uuid }
-    # string => { $uuid | str trim | str strip '-' | decode hex }
-    # binary => {
-      # let x = ($uuid | encode hex --lower | split chars
-      # | chunks 4 | par-each --keep-order {str join})
-      # $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
-    # }
     $it => { error make {
       msg: $'invalid type `($it)` provided'
       help: 'try with a `binary` or `string` uuid' }
@@ -182,12 +162,13 @@ export def "str nth-int" [
   --suffix-only(-s) # skip prepending number
 ] {
   let num = $in | default $it | into string
-  let fix = match ($num | split chars | last | into int) {
+  let unt = $num | split chars | reverse | take 2 | each {into int}
+  let fix = if ($unt.1? == 1) { 'th' } else { match $unt.0 {
     1 => { 'st' }
     2 => { 'nd' }
     3 => { 'rd' }
     _ => { 'th' }
-  }
+  }}
   if $suffix_only { $fix } else { $num ++ $fix }
 }
 
