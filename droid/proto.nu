@@ -254,11 +254,10 @@ export def wire [port: int = 5555] {
 
 def dump-build-props [
   ota_pkg: path
-  out_dir?: path
+  out_dir: path = ./.
 ] {
   let partitions = [system product vendor]
   let job_dir = mktemp -d build-prop-dump.XXXX
-  let out_dir = $out_dir | default $env.PWD
   tell info 'extracting the payload'
   unzip $ota_pkg payload.bin -d $job_dir
   cd $job_dir
@@ -272,11 +271,11 @@ def dump-build-props [
   mut props = ''
   let prop_paths = [
     'vendor/build.prop'
+    'system/build.prop'
     'system/vendor/build.prop'
     'system/system/build.prop'
-    'system/build.prop'
-    'product/build.prop'
     'product/etc/build.prop'
+    'product/build.prop'
   ]
   tell info 'gathering build properties'
   for file in $prop_paths {
