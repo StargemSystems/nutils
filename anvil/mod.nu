@@ -72,21 +72,29 @@ export def "flatten deep" [
 # Generate a namespaced v5 uuid.
 export def nsidgen [
   seed?: string # value to generate id with
-  --namespace(-n): string = '@oid' # uuid to derive id from
+  --namespace(-n) = '@oid' # uuid to derive id from
 ] {
-  ($in | default $seed
-  | ^uuidgen --sha1 --namespace $namespace --name $in
-  | str trim | str strip '-' | decode hex)
+  let ns = if ($namespace | of-type binary) { $namespace | format uuid } else { $namespace }
+  $in | default $seed | ^uuidgen --sha1 --namespace $ns --name $in | format uuid
 }
 
 #| transforms.nu
 
-# Transform raw binary uuid into properly formatted string.
-export def "format uuid" [raw?: binary] {
-  let x = ($in | default $raw
-  | encode hex --lower | split chars
-  | chunks 4 | par-each --keep-order {str join})
-  $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+# Transform uuid between raw binary and formatted string.
+export def "format uuid" [uuid?] {
+  let uuid = $in | default $uuid
+  match (what-is $uuid) {
+    string => { $uuid | str trim | str strip '-' | decode hex }
+    binary => {
+      let x = ($uuid | encode hex --lower | split chars
+      | chunks 4 | par-each --keep-order {str join})
+      $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+    }
+    $it => { error make {
+      msg: $'invalid type `($it)` provided'
+      help: 'try with a `binary` or `string` uuid' }
+    }
+  }
 }
 
 # Produce list with value flagged for use in command spread.
@@ -395,7 +403,7 @@ export def "blkd iden" [dev: path] {
   let serl = blkd serl $dev
   let guid = lsblk -ndo uuid $dev
   let wwid = lsblk -ndo wwn $dev
-  let uuid = nsidgen $serl
+  let uuid = nsidgen $serl | format uuid
   let mark = $uuid | str range (-7)..
   return {mark: $mark serl: $serl uuid: $uuid guid: $guid wwid: $wwid}
 }
