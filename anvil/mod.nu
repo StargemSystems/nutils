@@ -72,17 +72,17 @@ export def "flatten deep" [
 # Generate a namespaced v5 uuid.
 export def nsidgen [
   seed?: string # value to generate id with
-  --namespace(-s): string = '@oid' # uuid to derive id from
-  --binary(-b) # return raw decoded representation
+  --namespace(-n): string = '@oid' # uuid to derive id from
 ] {
-  let id = $in | default $seed | ^uuidgen --sha1 --namespace $namespace --name $in | str trim
-  elif $binary {$id | str strip '-' | decode hex} $id
+  ($in | default $seed
+  | ^uuidgen --sha1 --namespace $namespace --name $in
+  | str trim | str strip '-' | decode hex)
 }
 
 #| transforms.nu
 
 # Transform raw binary uuid into properly formatted string.
-export def "into uuid" [raw?: binary] {
+export def "format uuid" [raw?: binary] {
   let x = ($in | default $raw
   | encode hex --lower | split chars
   | chunks 4 | par-each --keep-order {str join})
