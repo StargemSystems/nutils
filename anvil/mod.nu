@@ -81,6 +81,14 @@ export def nsidgen [
 
 #| transforms.nu
 
+# Transform raw binary uuid into properly formatted string.
+export def "into uuid" [raw?: binary] {
+  let x = ($in | default $raw
+  | encode hex --lower | split chars
+  | chunks 4 | par-each --keep-order {str join})
+  $'($x.0)($x.1)-($x.2)-($x.3)-($x.4)-($x.5)($x.6)($x.7)'
+}
+
 # Produce list with value flagged for use in command spread.
 export def mk-flag [flag item?] {
   let cond = $in
@@ -90,6 +98,22 @@ export def mk-flag [flag item?] {
   if ($cond == true) and ($item == true) { return [$flag] }
   # if ($item | of-type closure) { $cond | do $item }
   return [$flag (do-lazy $item $cond)]
+}
+
+# Split string characters into chunck groups.
+export def "split chunks" [
+  ...takes: int # char length of each grouping
+  --strict(-s) # discard ungrouped remainders
+] {
+  mut chars = $in | split chars
+  [
+    (for len in $takes {
+      let it = $chars | take $len
+      $chars = $chars | skip $len
+      $it | str join
+    })
+    (if not ($strict) { $chars | str join })
+  ] | flatten
 }
 
 #| formats.nu
@@ -117,6 +141,21 @@ export def "str squeeze" [char: string = ' '] { $in | str replace -ar $'[($char)
 
 # Escape all quotes for posix consumption.
 export def "str enquote" [it?: any] { $in | default $it | to json -r | str replace -am '"' '\"' | $'"($in)"' }
+
+# Append number with proper spoken ending.
+export def "str nth-int" [
+  it?: int # number to suffix
+  --suffix-only(-s) # skip prepending number
+] {
+  let num = $in | default $it | into string
+  let fix = match ($num | split chars | last | into int) {
+    1 => { 'st' }
+    2 => { 'nd' }
+    3 => { 'rd' }
+    _ => { 'th' }
+  }
+  if $suffix_only { $fix } else { $num ++ $fix }
+}
 
 #| platform.nu
 
